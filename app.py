@@ -26,7 +26,7 @@ def load_rag_pipeline():
         groq_key = st.secrets["GROQ_API_KEY"]
         
     llm = ChatGroq(
-        model="qwen/qwen3.8-27b",
+        model="openai/gpt-oss-20b",
         groq_api_key=groq_key,
         temperature=0.2,
         max_tokens=500
