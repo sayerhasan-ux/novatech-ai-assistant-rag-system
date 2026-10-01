@@ -24,11 +24,7 @@ def load_sales_data(excel_path: str):
 
 if __name__ == "__main__":
     docs = load_sales_data("NovaTech_Sales_Data.xlsx")
-    print(f"Total rows converted to Documents: {len(docs)}\n")
-    print("--- First Document Content ---")
-    print(docs[0].page_content)
-    print("\n--- First Document Metadata ---")
-    print(docs[0].metadata)
+    print(f"Loaded {len(docs)} documents successfully!")
 
 
 
