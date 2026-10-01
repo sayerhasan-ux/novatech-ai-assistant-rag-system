@@ -3,7 +3,7 @@ import streamlit as st
 from dotenv import load_dotenv
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
@@ -15,32 +15,39 @@ st.set_page_config(page_title="NovaTech AI Assistant", page_icon="🤖", layout=
 st.title("🤖 NovaTech Solutions - AI Assistant")
 st.caption("Ask questions about company policies, sales performance, or employee handbook.")
 
-
 @st.cache_resource
 def load_rag_pipeline():
     embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
     vector_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
-    llm = ChatGoogleGenerativeAI(model="gemini-3.8-flash", temperature=0.2)
+    llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.2)
     return vector_db, llm
 
 vector_db, llm = load_rag_pipeline()
 
-
 prompt_template = PromptTemplate(
     template="""You are a helpful AI assistant for NovaTech Solutions.
-Answer the user's question based strictly on the following context. If you don't know the answer, say that you don't know.
+Answer the user's question based strictly on the following document context and recent conversation history. 
+If the answer cannot be determined from the context, state that clearly without guessing.
 
-Context:
+Conversation History:
+{chat_history}
+
+Document Context:
 {context}
 
 Question:
 {question}
 
 Answer:""",
-    input_variables=["context", "question"]
+    input_variables=["chat_history", "context", "question"]
 )
 
 rag_chain = prompt_template | llm | StrOutputParser()
+
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
 
 st.markdown("##### 💡 Try asking:")
 col1, col2, col3 = st.columns(3)
@@ -56,23 +63,54 @@ with col3:
     if st.button("🎫 Support Tickets", use_container_width=True):
         prompt_to_run = "What are the common support ticket issues logged by customers?"
 
+
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.write(msg["content"])
+        if "sources" in msg and msg["sources"]:
+            with st.expander("📄 View Reference Sources"):
+                for i, src in enumerate(msg["sources"]):
+                    st.markdown(f"**Source {i+1}:** `{src['source']}`")
+                    st.caption(src["content"][:250] + "...")
+
+
 user_query = st.chat_input("Ask a question about NovaTech...") or prompt_to_run
 
 if user_query:
+    
     with st.chat_message("user"):
         st.write(user_query)
 
+    
+    history_lines = [
+        f"{m['role'].capitalize()}: {m['content']}" 
+        for m in st.session_state.messages[-4:]
+    ]
+    chat_history_str = "\n".join(history_lines) if history_lines else "None"
+
+    # Search documents and run the RAG chain
     with st.spinner("Searching documents & thinking..."):
         matched_docs = vector_db.similarity_search(user_query, k=3)
         context_text = "\n\n".join([doc.page_content for doc in matched_docs])
-        response = rag_chain.invoke({"context": context_text, "question": user_query})
+        response = rag_chain.invoke({
+            "chat_history": chat_history_str,
+            "context": context_text,
+            "question": user_query
+        })
 
     with st.chat_message("assistant"):
         st.write(response)
 
-    with st.expander("📄 View Reference Sources"):
-        for i, doc in enumerate(matched_docs):
-            source_name = doc.metadata.get("source", "Unknown")
-            st.markdown(f"**Source {i+1}:** `{source_name}`")
-            st.caption(doc.page_content[:250] + "...")
+    sources_data = [
+        {"source": doc.metadata.get("source", "Unknown"), "content": doc.page_content}
+        for doc in matched_docs
+    ]
 
+    with st.expander("📄 View Reference Sources"):
+        for i, src in enumerate(sources_data):
+            st.markdown(f"**Source {i+1}:** `{src['source']}`")
+            st.caption(src["content"][:250] + "...")
+
+   
+    st.session_state.messages.append({"role": "user", "content": user_query})
+    st.session_state.messages.append({"role": "assistant", "content": response, "sources": sources_data})
