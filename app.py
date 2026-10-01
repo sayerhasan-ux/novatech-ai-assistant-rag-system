@@ -19,7 +19,18 @@ st.caption("Ask questions about company policies, sales performance, or employee
 def load_rag_pipeline():
     embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
     vector_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
-    llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.2)
+    
+    
+    groq_key = os.getenv("GROQ_API_KEY")
+    if not groq_key and "GROQ_API_KEY" in st.secrets:
+        groq_key = st.secrets["GROQ_API_KEY"]
+        
+    llm = ChatGroq(
+        model="qwen/qwen3.8-27b",
+        groq_api_key=groq_key,
+        temperature=0.2,
+        max_tokens=500
+    )
     return vector_db, llm
 
 vector_db, llm = load_rag_pipeline()
